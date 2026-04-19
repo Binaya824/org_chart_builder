@@ -154,16 +154,20 @@
     .btn-del:hover  { background: #ef4444 !important; color: #fff !important; border-color: #ef4444 !important; }
     .btn-sib:hover  { background: #10b981 !important; color: #fff !important; border-color: #10b981 !important; }
 
-    /* Category banner — sits between stem and siblings row, outside all cards */
-    .level-category {
+    /* Per-column category label — sits inside sib-col, above sib-drop */
+    .sib-cat {
       font-size: 0.58rem; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 1px; color: var(--text-2);
+      letter-spacing: 0.8px; color: var(--text-2);
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: 999px; padding: 3px 12px;
-      margin: 6px 0 4px; white-space: nowrap;
-      pointer-events: none;
+      border-radius: 999px; padding: 2px 10px;
+      white-space: nowrap; pointer-events: none;
       box-shadow: 0 1px 3px rgba(0,0,0,.06);
+      margin-bottom: 4px;
     }
+    /* Short pipe from crossbar down to the category label */
+    .sib-top-drop { width: 1px; height: 14px; background: var(--line); flex-shrink: 0; }
+    /* Alignment spacer — reserves same height when a sibling has no category */
+    .sib-cat-space { height: 22px; flex-shrink: 0; }
 
     /* Add-child button shown on card-wrap hover */
     .btn-add-child {
@@ -566,13 +570,18 @@ function renderNode(n) {
   let kids = '';
   if (hasKids) {
     const single = n.children.length === 1 ? ' single' : '';
-    // Use category from first child that has one — shown once above the whole level
-    const levelCategory = n.children.map(c => c.category || '').find(v => v) || '';
+    const anyCat = n.children.some(c => c.category);
     kids += `<div class="stem"></div>`;
-    if (levelCategory) kids += `<div class="level-category">${esc(levelCategory)}</div>`;
     kids += `<div class="siblings${single}">`;
     for (const c of n.children) {
-      kids += `<div class="sib-col"><div class="sib-drop"></div>${renderNode(c)}</div>`;
+      kids += `<div class="sib-col">`;
+      if (anyCat) {
+        kids += `<div class="sib-top-drop"></div>`;
+        kids += c.category
+          ? `<div class="sib-cat">${esc(c.category)}</div>`
+          : `<div class="sib-cat-space"></div>`;
+      }
+      kids += `<div class="sib-drop"></div>${renderNode(c)}</div>`;
     }
     kids += `</div>`;
   }
