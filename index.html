@@ -1015,58 +1015,62 @@ async function exportImage() {
   btn.disabled = true;
   btn.innerHTML = SPIN_SVG + ' Generating…';
 
-  // Hide UI chrome — buttons, zoom bar, ref toggle
-  const hiddenEls = document.querySelectorAll(
-    '.card-btns-right,.card-btns-left,.btn-add-child,.zoom-bar,.ref-toggle,.export-btn'
-  );
-  hiddenEls.forEach(el => el.style.visibility = 'hidden');
+  // ── Clone the chart into an isolated off-screen sandbox ──────────────────
+  // This avoids: transform resets, viewport clipping, windowWidth reflow hacks.
+  // The clone includes all .crossbar-line elements (with correct layout-pixel
+  // left/right values) because cloneNode(true) copies their inline styles.
 
-  // Reset the canvas transform so html2canvas sees the full natural layout
-  // (not clipped/scaled by the infinite canvas pan+zoom transform)
-  const savedTransform = canvasInner.style.transform;
-  const savedOverflow  = viewport.style.overflow;
-  canvasInner.style.transform = 'none';
-  viewport.style.overflow     = 'visible';
+  const sandbox = document.createElement('div');
+  // Park far off-screen to the left so it's never visible
+  sandbox.style.cssText = [
+    'position:fixed',
+    'top:0',
+    'left:-30000px',        // far off-screen — chart can be thousands of px wide
+    'overflow:visible',
+    'background:#f8fafc',
+    'pointer-events:none',
+    'z-index:-1',
+  ].join(';');
+
+  const chartEl = document.getElementById('chart');
+  const clone   = chartEl.cloneNode(true);   // deep clone — copies crossbar-line elements
+  sandbox.appendChild(clone);
+  document.body.appendChild(sandbox);
+
+  // Wait two animation frames so the browser fully lays out the clone
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
   try {
-    const chartEl = document.getElementById('chart');
-    const nw = chartEl.scrollWidth;
-    const nh = chartEl.scrollHeight;
+    const nw = clone.offsetWidth;
+    const nh = clone.offsetHeight;
 
-    // Scale up to 2× for retina sharpness, but cap so the canvas
-    // never exceeds 8192 px on either dimension (browser safety limit).
-    const exportScale = Math.max(1, Math.min(2, 8000 / Math.max(nw, nh)));
+    // Up to 2× retina quality; cap at 8000 px on the longest side to stay
+    // within browser canvas memory limits on very large charts.
+    const exportScale = Math.max(1, Math.min(2, 8000 / Math.max(nw, nh, 1)));
 
-    const offscreen = await html2canvas(chartEl, {
+    const canvas = await html2canvas(clone, {
       backgroundColor: '#f8fafc',
-      scale: exportScale,
-      useCORS: true,
-      scrollX: 0,
-      scrollY: 0,
-      x: 0,
-      y: 0,
+      scale:           exportScale,
+      useCORS:         true,
+      allowTaint:      true,
+      logging:         false,
+      // Explicitly tell html2canvas exactly which region to capture
+      x:      0,
+      y:      0,
       width:  nw,
       height: nh,
-      windowWidth:  nw,
-      windowHeight: nh,
-      logging: false,
     });
 
-    // Trigger PNG download
     const link = document.createElement('a');
     link.download = 'org-chart.png';
-    link.href = offscreen.toDataURL('image/png');
+    link.href = canvas.toDataURL('image/png');
     link.click();
   } catch (err) {
     alert('Export failed: ' + err.message);
   } finally {
-    // Restore transform and re-apply so crossbars are redrawn correctly
-    canvasInner.style.transform = savedTransform;
-    viewport.style.overflow     = savedOverflow;
-    hiddenEls.forEach(el => el.style.visibility = '');
-    btn.disabled = false;
+    document.body.removeChild(sandbox);
+    btn.disabled  = false;
     btn.innerHTML = DL_SVG + ' Export PNG';
-    drawCrossbars();
   }
 }
 </script>
