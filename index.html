@@ -548,11 +548,11 @@
 </aside>
 
 <!-- ══ EXPORT BUTTON ══ -->
-<button class="export-btn" id="export-btn" onclick="exportPDF()">
+<button class="export-btn" id="export-btn" onclick="exportImage()">
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
   </svg>
-  Export PDF
+  Export PNG
 </button>
 
 <!-- ══ FOOTER ══ -->
@@ -1006,51 +1006,67 @@ viewport.addEventListener('touchend', () => { panning = false; });
 </script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
-async function exportPDF() {
+const SPIN_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin .8s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`;
+const DL_SVG   = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+
+async function exportImage() {
   const btn = document.getElementById('export-btn');
   btn.disabled = true;
-  btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin .8s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Generating…`;
+  btn.innerHTML = SPIN_SVG + ' Generating…';
 
-  // Temporarily hide interactive overlays
-  const hiddenEls = document.querySelectorAll('.card-btns-right,.card-btns-left,.btn-add-child,.export-btn,.hint,.footer');
+  // Hide UI chrome — buttons, zoom bar, ref toggle
+  const hiddenEls = document.querySelectorAll(
+    '.card-btns-right,.card-btns-left,.btn-add-child,.zoom-bar,.ref-toggle,.export-btn'
+  );
   hiddenEls.forEach(el => el.style.visibility = 'hidden');
+
+  // Reset the canvas transform so html2canvas sees the full natural layout
+  // (not clipped/scaled by the infinite canvas pan+zoom transform)
+  const savedTransform = canvasInner.style.transform;
+  const savedOverflow  = viewport.style.overflow;
+  canvasInner.style.transform = 'none';
+  viewport.style.overflow     = 'visible';
 
   try {
     const chartEl = document.getElementById('chart');
-    const canvas = await html2canvas(chartEl, {
+    const nw = chartEl.scrollWidth;
+    const nh = chartEl.scrollHeight;
+
+    // Scale up to 2× for retina sharpness, but cap so the canvas
+    // never exceeds 8192 px on either dimension (browser safety limit).
+    const exportScale = Math.max(1, Math.min(2, 8000 / Math.max(nw, nh)));
+
+    const offscreen = await html2canvas(chartEl, {
       backgroundColor: '#f8fafc',
-      scale: 2,
+      scale: exportScale,
       useCORS: true,
       scrollX: 0,
-      scrollY: -window.scrollY,
-      windowWidth: document.documentElement.scrollWidth,
+      scrollY: 0,
+      x: 0,
+      y: 0,
+      width:  nw,
+      height: nh,
+      windowWidth:  nw,
+      windowHeight: nh,
+      logging: false,
     });
 
-    const imgW = canvas.width;
-    const imgH = canvas.height;
-    const { jsPDF } = window.jspdf;
-
-    // Fit to A4 or use image dimensions if larger
-    const a4w = 841.89, a4h = 595.28; // A4 landscape in pts
-    const ratio = Math.min(a4w / imgW, a4h / imgH);
-    const pdfW = imgW * ratio;
-    const pdfH = imgH * ratio;
-    const offsetX = (a4w - pdfW) / 2;
-    const offsetY = (a4h - pdfH) / 2;
-
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
-    pdf.setFillColor(248, 250, 252);
-    pdf.rect(0, 0, a4w, a4h, 'F');
-    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', offsetX, offsetY, pdfW, pdfH);
-    pdf.save('org-chart.pdf');
+    // Trigger PNG download
+    const link = document.createElement('a');
+    link.download = 'org-chart.png';
+    link.href = offscreen.toDataURL('image/png');
+    link.click();
   } catch (err) {
     alert('Export failed: ' + err.message);
   } finally {
+    // Restore transform and re-apply so crossbars are redrawn correctly
+    canvasInner.style.transform = savedTransform;
+    viewport.style.overflow     = savedOverflow;
     hiddenEls.forEach(el => el.style.visibility = '');
     btn.disabled = false;
-    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export PDF`;
+    btn.innerHTML = DL_SVG + ' Export PNG';
+    drawCrossbars();
   }
 }
 </script>
